@@ -290,9 +290,8 @@ namespace dxvk {
           UINT                              SrcDepthPitch) {
     FlushImplicit(FALSE);
 
-    D3D11DeviceContext::UpdateSubresource(
-      pDstResource, DstSubresource, pDstBox,
-      pSrcData, SrcRowPitch, SrcDepthPitch);
+    UpdateResource<D3D11ImmediateContext>(this, pDstResource,
+      DstSubresource, pDstBox, pSrcData, SrcRowPitch, SrcDepthPitch, 0);
   }
 
   
@@ -306,10 +305,8 @@ namespace dxvk {
           UINT                              CopyFlags) {
     FlushImplicit(FALSE);
 
-    D3D11DeviceContext::UpdateSubresource1(
-      pDstResource, DstSubresource, pDstBox,
-      pSrcData, SrcRowPitch, SrcDepthPitch,
-      CopyFlags);
+    UpdateResource<D3D11ImmediateContext>(this, pDstResource,
+      DstSubresource, pDstBox, pSrcData, SrcRowPitch, SrcDepthPitch, CopyFlags);
   }
   
   
@@ -497,6 +494,31 @@ namespace dxvk {
   }
   
   
+  void D3D11ImmediateContext::UpdateMappedBuffer(
+          D3D11Buffer*                  pDstBuffer,
+          UINT                          Offset,
+          UINT                          Length,
+    const void*                         pSrcData,
+          UINT                          CopyFlags) {
+    DxvkBufferSliceHandle slice;
+
+    if (likely(CopyFlags != D3D11_COPY_NO_OVERWRITE)) {
+      slice = pDstBuffer->DiscardSlice();
+
+      EmitCs([
+        cBuffer      = pDstBuffer->GetBuffer(),
+        cBufferSlice = slice
+      ] (DxvkContext* ctx) {
+        ctx->invalidateBuffer(cBuffer, cBufferSlice);
+      });
+    } else {
+      slice = pDstBuffer->GetMappedSlice();
+    }
+
+    std::memcpy(reinterpret_cast<char*>(slice.mapPtr) + Offset, pSrcData, Length);
+  }
+
+
   void STDMETHODCALLTYPE D3D11ImmediateContext::SwapDeviceContextState(
           ID3DDeviceContextState*           pState,
           ID3DDeviceContextState**          ppPreviousState) {
